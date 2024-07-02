@@ -2,16 +2,23 @@ package main
 
 import (
 	"fmt"
-	// "github.com/djeidj/Analyzing-Email-services-autoconfigurations/autoconfig"
-	"github.com/djeidj/Analyzing-Email-services-autoconfigurations/utils"
+	"github.com/djeidj/Analyzing-Email-services-autoconfigurations/autoconfig"
+	// "github.com/djeidj/Analyzing-Email-services-autoconfigurations/utils"
 )
 
 func main() {
-	// test for splitEmailAddress
-	emailAddress := "ghffdjyuf@hvmhv.com"
-	parts := utils.SplitEmailAddress(emailAddress)
-	fmt.Println(parts)
+	// download_sufffixlist()
+	// err := autoconfig.Get_PublicSuffixList("../download/public_suffix_list.josn")
+	// if err != nil {
+	// 	fmt.Println(err)
+	// } else {
+	// 	fmt.Println("Get_PublicSuffixList success")
+	// }
 
-	utils.Get_MX_record_SLD("qq.com")
-
+	err := autoconfig.Get_UrlListAutoconfigXML("1397798409@qq.com", "../download/public_suffix_list.josn", "../download/autoconfig")
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Get_UrlListAutoconfigXML success")
+	}
 }
