@@ -65,6 +65,10 @@ func Get_MX_full_main_domain(domain string, suffixlistpath string) ([2]string, e
 		}
 	}
 
+	if len(MX_full_main_tables) == 0 {
+		return [2]string{"", ""}, fmt.Errorf("no MX record found for domain: %s", domain)
+	}
+
 	// sort the map by value
 	MX_full_main_slice := SortMapByValue(MX_full_main_tables)
 
@@ -82,7 +86,7 @@ func Extract_SLDFromTLDmap(domain string, tldMap map[string]bool) (string, error
 
 	for i := range parts[0:] {
 		potentialTLD := strings.Join(parts[i:], ".")
-		fmt.Println(potentialTLD)
+		// fmt.Println(potentialTLD)
 		if tldMap[potentialTLD] {
 			if i == 0 {
 				return "", fmt.Errorf("no second-level domain: %s", domain)
@@ -121,7 +125,7 @@ func SortMapByValue(m map[[2]string]int) [][2]string {
 	return keys
 }
 
-// download the autoconfig.xml file to xmlpath
+// download the autoconfig.xml (use GET) file to xmlpath
 func Get_AutoconfigXML(url string, xmlpath string) error {
 	response, err := http.Get(url)
 	if err != nil {
@@ -130,9 +134,9 @@ func Get_AutoconfigXML(url string, xmlpath string) error {
 	defer response.Body.Close()
 
 	if response.StatusCode == 200 {
-		outFile, err := os.OpenFile(xmlpath, os.O_RDWR, 0755)
+		outFile, err := os.Create(xmlpath)
 		if err != nil {
-			return fmt.Errorf("error opening file: %v", xmlpath)
+			return fmt.Errorf("error creating file: %v", err)
 		}
 
 		defer outFile.Close()
@@ -147,4 +151,105 @@ func Get_AutoconfigXML(url string, xmlpath string) error {
 
 	return fmt.Errorf("error downloading file: %v", url)
 
+}
+
+// described in MS-OXDISCO 3.1.5.3
+func Get_SRV_domain(domain string) (string, error) {
+	out, err := exec.Command("nslookup", "-type=srv _autodiscover._tcp."+domain).Output()
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(string(out), "\r\n")
+
+	re := regexp.MustCompile(`autodiscover\.(.+)`)
+
+	for _, line := range lines {
+		if strings.Contains(line, "autodiscover") {
+			match := re.FindStringSubmatch(line)
+			return match[1], nil
+		}
+	}
+
+	return "", fmt.Errorf("no SRV record found for domain: %s", domain)
+}
+
+func Post_Autodiscoverxml(url string, xmlpath string) (string, error) {
+	response, err := http.Post(url, "multipart/form-data", nil)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == 200 {
+		outFile, err := os.Create(xmlpath)
+		if err != nil {
+			return "", fmt.Errorf("error creating file: %v", err)
+		}
+		defer outFile.Close()
+
+		_, err = io.Copy(outFile, response.Body)
+		if err != nil {
+			return "", fmt.Errorf("error saving to file: %v", xmlpath)
+		}
+
+		return "", nil
+	} else if response.StatusCode == 302 {
+		return response.Header.Get("Location"), nil
+	}
+
+	return "", fmt.Errorf("error downloading file: %v", url)
+}
+
+func Get_AutodiscoverXML(url string, xmlpath string) error {
+	response, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == 200 {
+		outFile, err := os.Create(xmlpath)
+		if err != nil {
+			return fmt.Errorf("error creating file: %v", err)
+		}
+
+		defer outFile.Close()
+
+		_, err = io.Copy(outFile, response.Body)
+		if err != nil {
+			return fmt.Errorf("error saving to file: %v", xmlpath)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("error downloading file: %v", url)
+}
+
+func Get_AutodiscoverXML_redirect(url string, xmlpath string) (string, error) {
+	response, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == 200 {
+		outFile, err := os.Create(xmlpath)
+		if err != nil {
+			return "", fmt.Errorf("error creating file: %v", err)
+		}
+		defer outFile.Close()
+
+		_, err = io.Copy(outFile, response.Body)
+		if err != nil {
+			return "", fmt.Errorf("error saving to file: %v", xmlpath)
+		}
+
+		return "", nil
+	} else if response.StatusCode == 302 {
+		return response.Header.Get("Location"), nil
+	}
+
+	return "", fmt.Errorf("error downloading file: %v", url)
 }

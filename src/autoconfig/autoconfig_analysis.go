@@ -13,6 +13,14 @@ import (
 )
 
 func Get_UrlListAutoconfigXML(email_address string, suffixlistpath string, path string) error {
+	// download the url_list's XML file to path
+	xmlpath := filepath.Join(path, email_address+".xml")
+
+	dir := filepath.Dir(xmlpath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("error creating directory: %v", dir)
+	}
+
 	parts, err := utils.Split_EmailAddress(email_address)
 	if err != nil {
 		return err
@@ -44,42 +52,28 @@ func Get_UrlListAutoconfigXML(email_address string, suffixlistpath string, path 
 	// 2. use `Get_MX_full_main_domain` to get mxfulldomain and mxmaindomain
 
 	mx_full_main_domain, err := utils.Get_MX_full_main_domain(email_domain, suffixlistpath)
-	if err != nil {
-		return err
+
+	// if there is no MX record, dont return, continue
+	if err == nil {
+		mxfulldomain := mx_full_main_domain[0]
+		mxmaindomain := mx_full_main_domain[1]
+
+		// 3.1 https://autoconfig.%MXFULLDOMAIN%/mail/config-v1.1.xml?emailaddress=%EMAILADDRESS% (Recommended)
+		url_3_1 := "https://autoconfig." + mxfulldomain + "/mail/config-v1.1.xml?emailaddress=" + email_address
+		url_list = append(url_list, url_3_1)
+
+		// 3.2 https://autoconfig.%MXMAINDOMAIN%/mail/config-v1.1.xml?emailaddress=%EMAILADDRESS% (Recommended)
+		url_3_2 := "https://autoconfig." + mxmaindomain + "/mail/config-v1.1.xml?emailaddress=" + email_address
+		url_list = append(url_list, url_3_2)
+
+		// 3.3 %ISPDB%%MXFULLDOMAIN% (Recommended)
+		url_3_3 := "https://autoconfig.thunderbird.net/v1.1/" + mxfulldomain
+		url_list = append(url_list, url_3_3)
+
+		// 3.4 %ISPDB%%MXMAINDOMAIN% (Recommended)
+		url_3_4 := "https://autoconfig.thunderbird.net/v1.1/" + mxmaindomain
+		url_list = append(url_list, url_3_4)
 	}
-	mxfulldomain := mx_full_main_domain[0]
-	mxmaindomain := mx_full_main_domain[1]
-
-	// 3.1 https://autoconfig.%MXFULLDOMAIN%/mail/config-v1.1.xml?emailaddress=%EMAILADDRESS% (Recommended)
-	url_3_1 := "https://autoconfig." + mxfulldomain + "/mail/config-v1.1.xml?emailaddress=" + email_address
-	url_list = append(url_list, url_3_1)
-
-	// 3.2 https://autoconfig.%MXMAINDOMAIN%/mail/config-v1.1.xml?emailaddress=%EMAILADDRESS% (Recommended)
-	url_3_2 := "https://autoconfig." + mxmaindomain + "/mail/config-v1.1.xml?emailaddress=" + email_address
-	url_list = append(url_list, url_3_2)
-
-	// 3.3 %ISPDB%%MXFULLDOMAIN% (Recommended)
-	url_3_3 := "https://autoconfig.thunderbird.net/v1.1/" + mxfulldomain
-	url_list = append(url_list, url_3_3)
-
-	// 3.4 %ISPDB%%MXMAINDOMAIN% (Recommended)
-	url_3_4 := "https://autoconfig.thunderbird.net/v1.1/" + mxmaindomain
-	url_list = append(url_list, url_3_4)
-
-	// download the url_list's XML file to path
-	xmlpath := filepath.Join(path, email_address+".xml")
-
-	dir := filepath.Dir(xmlpath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("error creating directory: %v", dir)
-	}
-
-	outFile, err := os.Create(xmlpath)
-	if err != nil {
-		return fmt.Errorf("error creating file: %v", err)
-	}
-
-	outFile.Close()
 
 	for _, url := range url_list {
 		err := utils.Get_AutoconfigXML(url, xmlpath)

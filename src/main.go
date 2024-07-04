@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/djeidj/Analyzing-Email-services-autoconfigurations/autoconfig"
+	"github.com/djeidj/Analyzing-Email-services-autoconfigurations/autodiscover"
 	// "github.com/djeidj/Analyzing-Email-services-autoconfigurations/utils"
 )
 
@@ -20,5 +21,12 @@ func main() {
 		fmt.Println(err)
 	} else {
 		fmt.Println("Get_UrlListAutoconfigXML success")
+	}
+
+	err = autodiscover.Download_UrlListAutodiscoverXML("kyc98409@example.com", "../download/autodiscover")
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Download_UrlListAutodiscoverXML success")
 	}
 }
