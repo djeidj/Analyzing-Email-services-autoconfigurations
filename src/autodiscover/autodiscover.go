@@ -165,7 +165,6 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 
 	}
 	//fmt.Println("23")
-	//fmt.Printf("Unexpected status code: %d\n", resp.StatusCode)
 	return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 
 }
