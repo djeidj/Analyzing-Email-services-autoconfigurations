@@ -8,35 +8,18 @@ import (
 	"net/http"
 )
 
-// 为方便解析Response中的xml文件，定义相关的struct结构体
-// AutodiscoverResponse代表Autodiscover响应的结构
-//
-//	type AutodiscoverResponse struct {
-//		XMLName  xml.Name `xml:"Autodiscover"`
-//		Response Response `xml:"Response"`
-//	}
+// 为方便解析Response中的xml文件，定义结构体映射Autodiscover Response xml结构
 type AutodiscoverResponse struct {
-	Response struct {
-		Account struct {
-			Action struct {
-				Type         string `xml:"Type"`
-				RedirectAddr string `xml:"RedirectAddr"`
-				RedirectUrl  string `xml:"RedirectUrl"`
-			} `xml:"Action"`
-		} `xml:"Account"`
-	} `xml:"Response"`
+	XMLName  xml.Name `xml:"Autodiscover"`
+	Response Response `xml:"Response"`
 }
-
-/*
-// Response代表Autodiscover响应中的Response元素
-// 2.2.4.1.1.1 User
-// 2.2.4.1.1.2 Account
 type Response struct {
-	User    User    `xml:"User"`
-	Account Account `xml:"Account"`
+	XMLName xml.Name `xml:"Response"`
+	User    User     `xml:"User"`
+	Account Account  `xml:"Account"`
+	Error   Error    `xml:"Error"`
 }
 
-// Autodiscover Response_User
 type User struct {
 	AutoDiscoverSMTPAddress string `xml:"AutoDiscoverSMTPAddress"`
 	DisplayName             string `xml:"DisplayName"`
@@ -45,28 +28,24 @@ type User struct {
 } //DefaultABView absent
 
 type Account struct {
-	AccountType        string               `xml:"AccountType"`
-	Action             Action               `xml:"Action"`
-	MicrosoftOnline    string               `xml:"MicrosoftOnline"`
-	ConsumerMailbox    string               `xml:"ConsumerMailbox"`
-	AlternativeMailbox []AlternativeMailbox `xml:"AlternativeMailbox"`
-}
+	AccountType     string `xml:"AccountType"`
+	Action          string `xml:"Action"` //重点
+	MicrosoftOnline string `xml:"MicrosoftOnline"`
+	ConsumerMailbox string `xml:"ConsumerMailbox"`
+	//AlternativeMailbox []AlternativeMailbox `xml:"AlternativeMailbox"`
+	Protocol     Protocol `xml:"Protocol"` //...
+	RedirectAddr string   `xml:"RedirectAddr"`
+	RedirectUrl  string   `xml:"RedirectUrl"`
+} //...
 
-type Action struct {
-	Type         string `xml:",chardata"`
-	RedirectAddr string `xml:"RedirectAddr"`
-	RedirectUrl  string `xml:"RedirectUrl"`
-}
-
-// 当Action_Type==settings时
 type Protocol struct {
 }
 
-type Settings struct {
-	Server   string `xml:"Server"`
-	Protocol string `xml:"Protocol"`
+type Error struct {
+	DebugData string `xml:"DebugData"`
+	Errorcode int    `xml:"Errorcode"`
+	Message   string `xml:"Message"`
 }
-*/
 
 func main() {
 	domain := "outlook.com"             //域名，但实际上还需要考虑客户端使用的是自己生成的域名的情况
@@ -123,7 +102,7 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 		redirect_uri := resp.Header.Get("Location") //从Response的Location Header中提取重定向uri进行repost
 		fmt.Printf("Redirecting to: %s\n", redirect_uri)
 		return getAutodiscoverConfig(redirect_uri, email_add) //Repost
-	} else if resp.StatusCode == http.StatusOK {
+	} else if resp.StatusCode == http.StatusOK { //如果Autodiscover Server返回了Autodiscover Response [MS-OSDSCLI]3.2.5
 		//fmt.Println("22")
 		//解析Autodiscover Response
 		body, err := io.ReadAll(resp.Body)
@@ -144,17 +123,17 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 		the client SHOULD send a new Autodiscover request.*/
 		//检查Action类型
 		//若为RedirectAddr
-		if autodiscoverResp.Response.Account.Action.Type == "RedirectAddr" {
+		if autodiscoverResp.Response.Account.Action == "RedirectAddr" {
 			//fmt.Println("22")
-			newEmail := autodiscoverResp.Response.Account.Action.RedirectAddr
+			newEmail := autodiscoverResp.Response.Account.RedirectAddr
 			if newEmail != "" {
 				fmt.Printf("RedirectAddr: %s\n", newEmail) //可打印
 				//重新发送请求
 				return getAutodiscoverConfig(uri, newEmail)
 			}
-		} else if autodiscoverResp.Response.Account.Action.Type == "RedirectUrl" {
+		} else if autodiscoverResp.Response.Account.Action == "RedirectUrl" { //若为RedirectUrl
 			//fmt.Println("22")
-			newUri := autodiscoverResp.Response.Account.Action.RedirectUrl
+			newUri := autodiscoverResp.Response.Account.RedirectUrl
 			if newUri != "" {
 				fmt.Printf("RedirectUrl: %s\n", newUri) //可打印
 				return getAutodiscoverConfig(newUri, email_add)
@@ -165,6 +144,7 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 
 	}
 	//fmt.Println("23")
+	//fmt.Printf("Unexpected status code: %d\n", resp.StatusCode)
 	return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 
 }
