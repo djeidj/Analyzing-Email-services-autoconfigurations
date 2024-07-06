@@ -5,7 +5,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 )
 
 // 为方便解析Response中的xml文件，定义结构体映射Autodiscover Response xml结构
@@ -17,7 +19,7 @@ type Response struct {
 	XMLName xml.Name `xml:"Response"`
 	User    User     `xml:"User"`
 	Account Account  `xml:"Account"`
-	Error   Error    `xml:"Error"`
+	Error   *Error   `xml:"Error,omitempty"`
 }
 
 type User struct {
@@ -28,10 +30,11 @@ type User struct {
 } //DefaultABView absent
 
 type Account struct {
-	AccountType     string `xml:"AccountType"`
-	Action          string `xml:"Action"` //重点
-	MicrosoftOnline string `xml:"MicrosoftOnline"`
-	ConsumerMailbox string `xml:"ConsumerMailbox"`
+	XMLName         xml.Name `xml:"Account"`
+	AccountType     string   `xml:"AccountType"`
+	Action          string   `xml:"Action"` //重点
+	MicrosoftOnline string   `xml:"MicrosoftOnline"`
+	ConsumerMailbox string   `xml:"ConsumerMailbox"`
 	//AlternativeMailbox []AlternativeMailbox `xml:"AlternativeMailbox"`
 	Protocol     Protocol `xml:"Protocol"` //...
 	RedirectAddr string   `xml:"RedirectAddr"`
@@ -42,9 +45,12 @@ type Protocol struct {
 }
 
 type Error struct {
-	DebugData string `xml:"DebugData"`
-	Errorcode int    `xml:"Errorcode"`
-	Message   string `xml:"Message"`
+	XMLName   xml.Name `xml:"Error"`
+	Time      string   `xml:"Time,attr"`
+	Id        string   `xml:"Id,attr"`
+	DebugData string   `xml:"DebugData"`
+	Errorcode string   `xml:"Errorcode"`
+	Message   string   `xml:"Message"`
 }
 
 func main() {
@@ -73,6 +79,39 @@ func main() {
 		fmt.Println("\n")
 	}
 
+	//3.An Autodiscover client can query DNS to obtain SRV records for the Autodiscover service
+	service := "_autodiscover._tcp." + domain
+	//查询SRV记录
+	_, srvs, err := net.LookupSRV("autodiscover", "tcp", domain)
+	if err != nil {
+		fmt.Printf("Failed to lookup SRV records for %s: %v\n", service, err)
+		return
+	}
+	//构建URIs列表
+	var uris_dns []string
+	for _, srv := range srvs {
+		host := strings.Trim(srv.Target, ".")
+		uri_dns := fmt.Sprintf("https://%s/Autodiscover/Autodiscover.xml", host)
+		uris_dns = append(uris_dns, uri_dns)
+	}
+	if len(uris_dns) == 0 {
+		fmt.Println("No valid SRV records found.")
+	} else {
+		fmt.Println("Possible Autodiscover URIs:")
+		for _, uri_dns := range uris_dns {
+			fmt.Println(uri_dns)
+			config, err := getAutodiscoverConfig(uri_dns, email_address)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+			} else {
+				fmt.Printf("Config: %s\n", config)
+			}
+			fmt.Println("\n")
+		}
+	}
+
+	//4.An Autodiscover client can also issue an HTTP GET method with the URI set to "http://Autodiscover.<domain>/Autodiscover/Autodiscover.xml"
+
 }
 
 // getAutodiscoverConfig函数实现发送HTTP POST请求以及检查是否导致302重定向
@@ -99,8 +138,8 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 	if resp.StatusCode == http.StatusFound { //if HTTP 302
 		//fmt.Println("22")
 		//the client SHOULD repost the request to the redirection URL contained in the Location header
-		redirect_uri := resp.Header.Get("Location") //从Response的Location Header中提取重定向uri进行repost
-		fmt.Printf("Redirecting to: %s\n", redirect_uri)
+		redirect_uri := resp.Header.Get("Location")           //从Response的Location Header中提取重定向uri进行repost
+		fmt.Printf("Redirecting to: %s\n", redirect_uri)      //[MS-OSDSCLI]3.1.5.2 HTTP 302 Redirects
 		return getAutodiscoverConfig(redirect_uri, email_add) //Repost
 	} else if resp.StatusCode == http.StatusOK { //如果Autodiscover Server返回了Autodiscover Response [MS-OSDSCLI]3.2.5
 		//fmt.Println("22")
@@ -122,8 +161,9 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 		which contains an Action element (section 2.2.4.1.1.2.2) with a value of "redirectAddr",
 		the client SHOULD send a new Autodiscover request.*/
 		//检查Action类型
-		//若为RedirectAddr
-		if autodiscoverResp.Response.Account.Action == "RedirectAddr" {
+		//[MS-OSDSCLI]3.1.5.3 Autodiscover Redirect
+		//若为redirectAddr
+		if autodiscoverResp.Response.Account.Action == "redirectAddr" {
 			//fmt.Println("22")
 			newEmail := autodiscoverResp.Response.Account.RedirectAddr
 			if newEmail != "" {
@@ -131,20 +171,21 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 				//重新发送请求
 				return getAutodiscoverConfig(uri, newEmail)
 			}
-		} else if autodiscoverResp.Response.Account.Action == "RedirectUrl" { //若为RedirectUrl
+		} else if autodiscoverResp.Response.Account.Action == "redirectUrl" { //若为redirectUrl
 			//fmt.Println("22")
 			newUri := autodiscoverResp.Response.Account.RedirectUrl
 			if newUri != "" {
 				fmt.Printf("RedirectUrl: %s\n", newUri) //可打印
 				return getAutodiscoverConfig(newUri, email_add)
 			}
+		} else if autodiscoverResp.Response.Error != nil {
+			fmt.Printf("ErrorCode: %s\n", autodiscoverResp.Response.Error.Errorcode)
+
 		} else {
 			return string(body), nil // 返回XML配置文件内容
 		}
 
 	}
-	//fmt.Println("23")
-	//fmt.Printf("Unexpected status code: %d\n", resp.StatusCode)
 	return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 
 }
