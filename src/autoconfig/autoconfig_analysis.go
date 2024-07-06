@@ -4,15 +4,15 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/djeidj/Analyzing-Email-services-autoconfigurations/utils"
 )
 
-func Get_UrlListAutoconfigXML(email_address string, suffixlistpath string, path string) error {
+func Download_AutoconfigXML(email_address string, suffixlistpath string, path string) error {
 	// download the url_list's XML file to path
 	xmlpath := filepath.Join(path, email_address+".xml")
 
@@ -21,10 +21,11 @@ func Get_UrlListAutoconfigXML(email_address string, suffixlistpath string, path 
 		return fmt.Errorf("error creating directory: %v", dir)
 	}
 
-	parts, err := utils.Split_EmailAddress(email_address)
-	if err != nil {
-		return err
+	parts := strings.Split(email_address, "@")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid email address: %v", email_address)
 	}
+
 	email_domain := parts[1]
 	//email_local := parts[0]
 
@@ -51,7 +52,7 @@ func Get_UrlListAutoconfigXML(email_address string, suffixlistpath string, path 
 	// 1. you need to download the sufficlist first use `Get_PublicSuffixList`
 	// 2. use `Get_MX_full_main_domain` to get mxfulldomain and mxmaindomain
 
-	mx_full_main_domain, err := utils.Get_MX_full_main_domain(email_domain, suffixlistpath)
+	mx_full_main_domain, err := Get_MX_full_main_domain(email_domain, suffixlistpath)
 
 	// if there is no MX record, dont return, continue
 	if err == nil {
@@ -76,13 +77,41 @@ func Get_UrlListAutoconfigXML(email_address string, suffixlistpath string, path 
 	}
 
 	for _, url := range url_list {
-		err := utils.Get_AutoconfigXML(url, xmlpath)
+		err := Get_AutoconfigXML(url, xmlpath)
 		if err == nil {
 			return nil
 		}
 	}
 
 	return fmt.Errorf("can't find Autoconfigxml file for %v", email_address)
+
+}
+
+// download the autoconfig.xml (use GET) file to xmlpath
+func Get_AutoconfigXML(url string, xmlpath string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		outFile, err := os.Create(xmlpath)
+		if err != nil {
+			return fmt.Errorf("error creating file: %v", err)
+		}
+
+		defer outFile.Close()
+
+		_, err = io.Copy(outFile, resp.Body)
+		if err != nil {
+			return fmt.Errorf("error saving to file: %v", xmlpath)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("error downloading file: %v", url)
 
 }
 
@@ -123,4 +152,64 @@ func Get_PublicSuffixList(suffixlistpath string) error {
 		return fmt.Errorf("failed to write to file: %s", suffixlistpath)
 	}
 	return nil
+}
+
+// `Get_MX_record_SLD` call `ExtractSLD_localpuffixlist` and `loadMapFromFile`
+func Get_MX_full_main_domain(domain string, suffixlistpath string) ([2]string, error) {
+	tldMap, err := loadMapFromFile(suffixlistpath)
+	if err != nil {
+		return [2]string{"", ""}, err
+	}
+
+	mx, err := net.LookupMX(domain)
+	if err != nil {
+		return [2]string{"", ""}, err
+	}
+
+	mxmaindomian, err := Extract_SLDFromTLDmap(mx[0].Host, tldMap)
+	if err != nil {
+		return [2]string{"", ""}, err
+
+	}
+
+	tmp1 := strings.Split(mx[0].Host, ".")
+	mxfulldomain := strings.Join(tmp1[1:], ".")
+
+	return [2]string{mxfulldomain, mxmaindomian}, nil
+}
+
+// Extract the second-level domain from a domain name using tldmap
+func Extract_SLDFromTLDmap(domain string, tldMap map[string]bool) (string, error) {
+	parts := strings.Split(domain, ".")
+
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid domain: %s", domain)
+	}
+
+	for i := range parts[0:] {
+		potentialTLD := strings.Join(parts[i:], ".")
+		// fmt.Println(potentialTLD)
+		if tldMap[potentialTLD] {
+			if i == 0 {
+				return "", fmt.Errorf("no second-level domain: %s", domain)
+			}
+			return parts[i-1] + "." + potentialTLD, nil
+		}
+	}
+
+	return "", fmt.Errorf("no public suffix found for domain: %s", domain)
+}
+
+// load a file in format of json to a map[string]bool
+func loadMapFromFile(suffixlistpath string) (map[string]bool, error) {
+	file, err := os.Open(suffixlistpath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var m map[string]bool
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&m)
+	return m, err
 }

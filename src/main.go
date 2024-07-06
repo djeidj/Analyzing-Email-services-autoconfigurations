@@ -16,14 +16,14 @@ func main() {
 	// 	fmt.Println("Get_PublicSuffixList success")
 	// }
 
-	err := autoconfig.Get_UrlListAutoconfigXML("1397798409@qq.com", "../download/public_suffix_list.josn", "../download/autoconfig")
+	err := autoconfig.Download_AutoconfigXML("1397798409@qq.com", "../download/public_suffix_list.josn", "../download/autoconfig")
 	if err != nil {
 		fmt.Println(err)
 	} else {
 		fmt.Println("Get_UrlListAutoconfigXML success")
 	}
 
-	err = autodiscover.Download_UrlListAutodiscoverXML("kyc98409@example.com", "../download/autodiscover")
+	err = autodiscover.Download_AutodiscoverXML("kyc98409@example.com", "../download/autodiscover")
 	if err != nil {
 		fmt.Println(err)
 	} else {

@@ -6,9 +6,7 @@ require github.com/djeidj/Analyzing-Email-services-autoconfigurations/autoconfig
 
 require github.com/djeidj/Analyzing-Email-services-autoconfigurations/autodiscover v1.0.0
 
-require github.com/djeidj/Analyzing-Email-services-autoconfigurations/utils v0.0.0 // indirect
 
-replace github.com/djeidj/Analyzing-Email-services-autoconfigurations/utils => ./utils
 
 replace github.com/djeidj/Analyzing-Email-services-autoconfigurations/autoconfig => ./autoconfig
 
