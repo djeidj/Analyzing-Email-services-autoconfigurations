@@ -54,8 +54,8 @@ type Error struct {
 }
 
 func main() {
-	domain := "outlook.com"             //域名，但实际上还需要考虑客户端使用的是自己生成的域名的情况
-	email_address := "info@outlook.com" //客户端需要配置的邮件地址
+	domain := "contoso.com"             //域名，但实际上还需要考虑客户端使用的是自己生成的域名的情况
+	email_address := "info@contoso.com" //客户端需要配置的邮件地址
 
 	//通过[MS-OXDISCO]中的3.1.5指出的方法找到Autodiscover server的URI
 	//var uris []string;  //声明需要的server uris切片
@@ -109,9 +109,17 @@ func main() {
 			fmt.Println("\n")
 		}
 	}
-
+	
 	//4.An Autodiscover client can also issue an HTTP GET method with the URI set to "http://Autodiscover.<domain>/Autodiscover/Autodiscover.xml"
-
+	GET_uri := fmt.Sprintf("http://Autodiscover.%s/Autodiscover/Autodiscover.xml", domain)
+	
+	config, err := GET_AutodiscoverConfig(GET_uri, email_address)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	} else {
+		fmt.Printf("Config: %s\n", config)
+	}
+	fmt.Println("\n")
 }
 
 // getAutodiscoverConfig函数实现发送HTTP POST请求以及检查是否导致302重定向
@@ -125,7 +133,7 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
         </Autodiscover>`, email_add) //按照[MS-OSDSCLI]4.1的格式
 
 	resp, err := http.Post(uri, "text/xml", bytes.NewBufferString(xmlRequest)) //发送HTTP POST请求
-	//fmt.Println("00")
+
 	if err != nil {
 		fmt.Println("09")
 		return "", err
@@ -134,22 +142,20 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 
 	fmt.Printf("Response Status Code: %d\n", resp.StatusCode)
 
-	//fmt.Println("1")
 	if resp.StatusCode == http.StatusFound { //if HTTP 302
-		//fmt.Println("22")
+
 		//the client SHOULD repost the request to the redirection URL contained in the Location header
 		redirect_uri := resp.Header.Get("Location")           //从Response的Location Header中提取重定向uri进行repost
 		fmt.Printf("Redirecting to: %s\n", redirect_uri)      //[MS-OSDSCLI]3.1.5.2 HTTP 302 Redirects
 		return getAutodiscoverConfig(redirect_uri, email_add) //Repost
 	} else if resp.StatusCode == http.StatusOK { //如果Autodiscover Server返回了Autodiscover Response [MS-OSDSCLI]3.2.5
-		//fmt.Println("22")
+
 		//解析Autodiscover Response
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Printf("Failed to read response body: %v\n", err)
 			return "", fmt.Errorf("failed to read response body: %v", err)
 		}
-		//fmt.Println("22")
 		var autodiscoverResp AutodiscoverResponse
 		err = xml.Unmarshal(body, &autodiscoverResp)
 		if err != nil {
@@ -180,7 +186,7 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 			}
 		} else if autodiscoverResp.Response.Error != nil {
 			fmt.Printf("ErrorCode: %s\n", autodiscoverResp.Response.Error.Errorcode)
-
+			return autodiscoverResp.Response.Error.Errorcode, nil
 		} else {
 			return string(body), nil // 返回XML配置文件内容
 		}
@@ -188,4 +194,28 @@ func getAutodiscoverConfig(uri string, email_add string) (string, error) {
 	}
 	return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 
+}
+
+func GET_AutodiscoverConfig(uri string, email_add string) (string, error) {
+	resp, err := http.Get(uri)
+	if err != nil {
+		fmt.Println("", err)
+	}
+	defer resp.Body.Close()
+	
+	//检查响应状态码
+	if resp.StatusCode == http.StatusFound {
+		redirect_uri := resp.Header.Get("Location")
+		if redirect_uri != "" {
+			fmt.Printf("Redirecting to: %s\n", redirect_uri)
+			return getAutodiscoverConfig(redirect_uri, email_add)
+		}
+	} else if resp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("failed to read response body: %v", err)
+		}
+		return string(body), nil
+	}
+	return string(resp.StatusCode), nil
 }
